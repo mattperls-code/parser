@@ -1,0 +1,8 @@
+  <root  type="document">
+    <g >
+        <tag />
+    </g>
+    hello world!
+     <t>nested text</ t  >  
+    <selfClosing  attribute="stuff" />
+</ root>
