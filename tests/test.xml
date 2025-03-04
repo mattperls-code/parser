@@ -1,8 +1,14 @@
-  <root  type="document">
-    <g >
-        <tag />
-    </g>
-    hello world!
-     <t>nested text</ t  >  
-    <selfClosing  attribute="stuff" />
-</ root>
+<root>
+    <item id="1" type="example">
+        <title>Example Item</title>
+        <description>This is a sample description.</description>
+        <date>2025-03-03</date>
+        <meta key="value"/>
+    </item>
+    <item id="2" type="example">
+        <title>Another Item</title>
+        <description>Another sample entry.</description>
+        <date>2025-03-04</date>
+        <meta key="value"/>
+    </item>
+</root>

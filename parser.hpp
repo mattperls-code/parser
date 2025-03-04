@@ -7,6 +7,15 @@
 #include <functional>
 #include <optional>
 
+typedef std::function<bool(const char)> Predicate;
+
+Predicate is(const char c);
+Predicate anyOf(const std::vector<Predicate> predicates);
+Predicate negate(const Predicate predicate);
+
+const extern Predicate isAlphabetical;
+const extern Predicate isNumeric;
+
 class Token
 {
     private:
@@ -24,6 +33,8 @@ class Token
 
         int start;
         int width;
+
+        Token() = default;
     
         Token(std::string id, std::string stringLiteral, int start, int width);
         Token(std::string id, std::vector<Token> nesting, int start, int width);
@@ -32,18 +43,53 @@ class Token
         std::string contentString() const;
 };
 
-typedef std::function<bool(const char)> Predicate;
+class ParserFailure
+{
+    public:
+        int start;
 
-Predicate is(const char c);
-Predicate anyOf(const std::vector<Predicate> predicates);
-Predicate negate(const Predicate predicate);
+        std::string name;
 
-const extern Predicate isAlphabetical;
-const extern Predicate isNumeric;
+        ParserFailure(int start);
+        ParserFailure(int start, std::string name);
 
-typedef std::optional<Token> ParserCombinatorResult;
+        static ParserFailure composeFrom(std::vector<ParserFailure> parserFailures);
 
-typedef std::function<ParserCombinatorResult(const std::string&, const int, const int)> ParserCombinator;
+        std::string toString() const;
+};
+
+enum ParserCombinatorResultType
+{
+    TOKEN,
+    PARSER_FAILURE
+};
+
+typedef std::variant<Token, ParserFailure> ParserCombinatorResult;
+
+ParserCombinatorResultType getResultType(ParserCombinatorResult result);
+Token getTokenFromResult(ParserCombinatorResult result);
+ParserFailure getParserFailureFromResult(ParserCombinatorResult result);
+
+class ParserCombinator
+{
+    private:
+        std::function<ParserCombinatorResult(const std::string&, int, int)> implementation;
+
+    public:
+        ParserCombinator() = default;
+
+        ParserCombinator(std::function<ParserCombinatorResult(const std::string&, int, int)> implementation);
+
+        ParserCombinatorResult operator()(const std::string&, int, int) const;
+
+        ParserCombinator repeatedly();
+        ParserCombinator repeatedly(const int minCount);
+        ParserCombinator repeatedly(const int minCount, const int maxCount);
+
+        ParserCombinator optionally();
+
+        ParserCombinator named(const std::string name);
+};
 
 ParserCombinator satisfy(const Predicate predicate);
 ParserCombinator satisfy(const std::string tokenId, const Predicate predicate);
@@ -54,6 +100,13 @@ ParserCombinator repetition(const ParserCombinator nestedTokenGenerator, const i
 ParserCombinator repetition(const std::string tokenId, const ParserCombinator nestedTokenGenerator);
 ParserCombinator repetition(const std::string tokenId, const ParserCombinator nestedTokenGenerator, const int minCount);
 ParserCombinator repetition(const std::string tokenId, const ParserCombinator nestedTokenGenerator, const int minCount, const int maxCount);
+
+ParserCombinator strictlyRepetition(const ParserCombinator nestedTokenGenerator);
+ParserCombinator strictlyRepetition(const ParserCombinator nestedTokenGenerator, const int minCount);
+ParserCombinator strictlyRepetition(const ParserCombinator nestedTokenGenerator, const int minCount, const int maxCount);
+ParserCombinator strictlyRepetition(const std::string tokenId, const ParserCombinator nestedTokenGenerator);
+ParserCombinator strictlyRepetition(const std::string tokenId, const ParserCombinator nestedTokenGenerator, const int minCount);
+ParserCombinator strictlyRepetition(const std::string tokenId, const ParserCombinator nestedTokenGenerator, const int minCount, const int maxCount);
 
 ParserCombinator optional(const ParserCombinator tokenGenerator);
 ParserCombinator optional(const std::string tokenId, const ParserCombinator tokenGenerator);
@@ -69,8 +122,6 @@ ParserCombinator whitespace();
 ParserCombinator choice(const std::vector<ParserCombinator> tokenGeneratorChoices);
 
 ParserCombinator proxyParserCombinator(const ParserCombinator* parserCombinatorPointer);
-
-void inlineAnonymousNests(Token& token);
 
 ParserCombinatorResult parse(const std::string& str, const ParserCombinator parserCombinator);
 
