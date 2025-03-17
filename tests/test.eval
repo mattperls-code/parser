@@ -1,8 +1,2 @@
- let abc = --4.50;let x = 4 ; 
+let a = --4.50; let x = 4 ; 
   let y = -0.5; eval   abc  +  3.0 * x / (-4.0 + -y)
-
-
-eval 3.0 * x / y;
- let abc = --4.50;let x = 4 ; 
-  let y = -0.5; eval   abc  +  3.0 * x / (-4.0 + -y)
-

@@ -1,17 +1,22 @@
-#include <iostream>
-#include <limits>
+#include <future>
 
 #include "parser.hpp"
 
-Predicate is(const char c)
+Predicate is(const char& c)
 {
-    return [c] (char testC) {
+    return [c] (const char& testC) {
         return c == testC;
     };
 };
 
+Predicate negate(const Predicate predicate) {
+    return [predicate] (const char& c) {
+        return !predicate(c);
+    };
+};
+
 Predicate anyOf(const std::vector<Predicate> predicates) {
-    return [predicates] (char c) {
+    return [predicates] (const char& c) {
         for (Predicate predicate : predicates) {
             if (predicate(c)) return true;
         }
@@ -20,81 +25,17 @@ Predicate anyOf(const std::vector<Predicate> predicates) {
     };
 };
 
-Predicate negate(const Predicate predicate) {
-    return [predicate] (char c) {
-        return !predicate(c);
+Predicate noneOf(const std::vector<Predicate> predicates) {
+    return [predicates] (const char& c) {
+        for (Predicate predicate : predicates) {
+            if (predicate(c)) return false;
+        }
+
+        return true;
     };
-};
+}
 
-const Predicate isAlphabetical = anyOf({
-    is('a'),
-    is('b'),
-    is('c'),
-    is('d'),
-    is('e'),
-    is('f'),
-    is('g'),
-    is('h'),
-    is('i'),
-    is('j'),
-    is('k'),
-    is('l'),
-    is('m'),
-    is('n'),
-    is('o'),
-    is('p'),
-    is('q'),
-    is('r'),
-    is('s'),
-    is('t'),
-    is('u'),
-    is('v'),
-    is('w'),
-    is('x'),
-    is('y'),
-    is('z'),
-    is('A'),
-    is('B'),
-    is('C'),
-    is('D'),
-    is('E'),
-    is('F'),
-    is('G'),
-    is('H'),
-    is('I'),
-    is('J'),
-    is('K'),
-    is('L'),
-    is('M'),
-    is('N'),
-    is('O'),
-    is('P'),
-    is('Q'),
-    is('R'),
-    is('S'),
-    is('T'),
-    is('U'),
-    is('V'),
-    is('W'),
-    is('X'),
-    is('Y'),
-    is('Z'),
-});
-
-const Predicate isNumeric = anyOf({
-    is('0'),
-    is('1'),
-    is('2'),
-    is('3'),
-    is('4'),
-    is('5'),
-    is('6'),
-    is('7'),
-    is('8'),
-    is('9')
-});
-
-Token::Token(std::string id, std::string stringLiteral, int start, int width)
+Token::Token(std::string id, std::string stringLiteral, const int start, int width)
 {
     this->id = id;
     this->type = Token::TokenType::STRING_LITERAL;
@@ -103,13 +44,23 @@ Token::Token(std::string id, std::string stringLiteral, int start, int width)
     this->width = width;
 };
 
-Token::Token(std::string id, std::vector<Token> nesting, int start, int width)
+Token::Token(std::string id, std::vector<Token> NEST, const int start, int width)
 {
     this->id = id;
-    this->type = Token::TokenType::NESTING;
-    this->content = nesting;
+    this->type = Token::TokenType::NEST;
+    this->content = NEST;
     this->start = start;
     this->width = width;
+};
+
+const std::string& Token::getStringLiteralContent() const
+{
+    return std::get<std::string>(this->content);
+};
+
+const std::vector<Token>& Token::getNestingContent() const
+{
+    return std::get<std::vector<Token>>(this->content);
 };
 
 std::string Token::toString() const
@@ -124,16 +75,18 @@ std::string Token::toString(int indent) const
     for (int i = 0;i<indent;i++) indentStr += ' ';
 
     if (this->type == Token::TokenType::STRING_LITERAL) {
-        return indentStr + this->id + " \"" + std::get<std::string>(this->content) + "\"";
+        return indentStr + this->id + " \"" + this->getStringLiteralContent() + "\"";
     } else {
-        std::vector<Token> children = std::get<std::vector<Token>>(this->content);
+        const std::vector<Token>& children = this->getNestingContent();
+
+        if (children.empty()) return indentStr + this->id;
 
         std::string childrenString = "";
 
         for (int i = 0;i<(int)children.size();i++) {
-            if (i == 0) childrenString += children[0].toString(indent + 2);
+            if (i == 0) childrenString += children[0].toString(indent + 4);
             
-            else childrenString += ",\n" + children[i].toString(indent + 2);
+            else childrenString += ",\n" + children[i].toString(indent + 4);
         }
 
         return indentStr + this->id + " {\n" + childrenString + "\n" + indentStr + "}";
@@ -142,13 +95,24 @@ std::string Token::toString(int indent) const
 
 std::string Token::contentString() const
 {
-    if (this->type == Token::TokenType::STRING_LITERAL) return std::get<std::string>(this->content);
+    if (this->type == Token::TokenType::STRING_LITERAL) return this->getStringLiteralContent();
 
     std::string childrenString = "";
     
-    for (const Token& child : std::get<std::vector<Token>>(this->content)) childrenString += child.contentString();
+    for (const Token& child : this->getNestingContent()) childrenString += child.contentString();
 
     return childrenString;
+};
+
+inline void addChildToken(std::vector<Token>& parent, const Token& token)
+{
+    if (!token.id.empty()) parent.push_back(token);
+
+    else if(token.type == Token::TokenType::NEST) {
+        const std::vector<Token>& tokenChildren = token.getNestingContent();
+
+        parent.insert(parent.end(), tokenChildren.begin(), tokenChildren.end());
+    }
 };
 
 ParserFailure::ParserFailure(int start)
@@ -160,7 +124,7 @@ ParserFailure::ParserFailure(int start)
 ParserFailure::ParserFailure(int start, std::string name)
 {
     this->start = start;
-    this->name = name;
+    this->name = "\033[34m" + name + "\033[0m";
 };
 
 ParserFailure ParserFailure::composeFrom(std::vector<ParserFailure> parserFailures)
@@ -182,9 +146,9 @@ ParserFailure ParserFailure::composeFrom(std::vector<ParserFailure> parserFailur
 
 std::string ParserFailure::toString() const
 {
-    std::string locationString = "Error at character " + std::to_string(this->start + 1) + ". ";
+    std::string locationString = "Error at char " + std::to_string(this->start + 1) + ". ";
 
-    std::string expectedString = this->name.size() == 0 ? "" : "Expected " + this->name + ". ";
+    std::string expectedString = this->name.empty() ? "" : "Expected " + this->name;
     
     return locationString + expectedString;
 };
@@ -204,46 +168,150 @@ ParserFailure getParserFailureFromResult(ParserCombinatorResult result)
     return std::get<ParserFailure>(result);
 };
 
-ParserCombinator::ParserCombinator(std::function<ParserCombinatorResult(const std::string&, const int, const int)> implementation)
+ParserCombinator::ParserCombinator(std::function<ParserCombinatorResult(const std::string&, const int)> implementation)
 {
     this->implementation = implementation;
 };
 
-ParserCombinatorResult ParserCombinator::operator()(const std::string& str, const int start, const int width) const
+ParserCombinatorResult ParserCombinator::operator()(const std::string& str, const int start) const
 {
-    return this->implementation(str, start, width);
+    return this->implementation(str, start);
 };
 
-ParserCombinator ParserCombinator::repeatedly()
+ParserCombinator ParserCombinator::repeatedly() const
 {
     return repetition(*this);
 };
 
-ParserCombinator ParserCombinator::repeatedly(const int minCount)
+ParserCombinator ParserCombinator::repeatedly(const int minCount) const
 {
     return repetition(*this, minCount);
 };
 
-ParserCombinator ParserCombinator::repeatedly(const int minCount, const int maxCount)
+ParserCombinator ParserCombinator::repeatedly(const int minCount, const int maxCount) const
 {
     return repetition(*this, minCount, maxCount);
 };
 
-ParserCombinator ParserCombinator::optionally()
+ParserCombinator ParserCombinator::strictlyRepeatedly() const
+{
+    return strictlyRepetition(*this);
+};
+
+ParserCombinator ParserCombinator::strictlyRepeatedly(const int minCount) const
+{
+    return strictlyRepetition(*this, minCount);
+};
+
+ParserCombinator ParserCombinator::strictlyRepeatedly(const int minCount, const int maxCount) const
+{
+    return strictlyRepetition(*this, minCount, maxCount);
+};
+
+ParserCombinator ParserCombinator::repeatedlyWithDelimeter(const ParserCombinator delimiter) const
+{
+    return sequence({
+        *this,
+        sequence({
+            delimiter,
+            *this
+        }).repeatedly()
+    });
+};
+
+ParserCombinator ParserCombinator::repeatedlyWithDelimeter(const std::string wrapperTokenId, const ParserCombinator delimiter) const
+{
+    return sequence(wrapperTokenId, {
+        *this,
+        sequence({
+            delimiter,
+            *this
+        }).repeatedly()
+    });
+};
+
+ParserCombinator ParserCombinator::strictlyRepeatedlyWithDelimeter(const ParserCombinator delimiter) const
+{
+    return sequence({
+        *this,
+        sequence({
+            delimiter,
+            *this
+        }).strictlyRepeatedly()
+    });
+};
+
+ParserCombinator ParserCombinator::strictlyRepeatedlyWithDelimeter(const std::string wrapperTokenId, const ParserCombinator delimiter) const
+{
+    return sequence(wrapperTokenId, {
+        *this,
+        sequence({
+            delimiter,
+            *this
+        }).strictlyRepeatedly()
+    });
+};
+
+ParserCombinator ParserCombinator::optionally() const
 {
     return optional(*this);
 };
 
-ParserCombinator ParserCombinator::named(const std::string name)
+ParserCombinator ParserCombinator::optionally(const std::string wrapperTokenId) const
 {
-    return ParserCombinator([*this, name] (const std::string& str, const int start, const int width) -> ParserCombinatorResult {
-        ParserCombinatorResult result = (*this)(str, start, width);
+    return optional(wrapperTokenId, *this);
+};
+
+ParserCombinator ParserCombinator::precededBy(const ParserCombinator predecessor) const
+{
+    return precededBy("", predecessor);
+};
+
+ParserCombinator ParserCombinator::precededBy(const std::string wrapperTokenId, const ParserCombinator predecessor) const
+{
+    return sequence(wrapperTokenId, {
+        predecessor,
+        *this
+    });
+};
+
+ParserCombinator ParserCombinator::followedBy(const ParserCombinator predecessor) const
+{
+    return followedBy("", predecessor);
+};
+
+ParserCombinator ParserCombinator::followedBy(const std::string wrapperTokenId, const ParserCombinator predecessor) const
+{
+    return sequence(wrapperTokenId, {
+        *this,
+        predecessor
+    });
+};
+
+ParserCombinator ParserCombinator::sorroundedBy(const ParserCombinator neighbor) const
+{
+    return sorroundedBy("", neighbor);
+};
+
+ParserCombinator ParserCombinator::sorroundedBy(const std::string wrapperTokenId, const ParserCombinator neighbor) const
+{
+    return sequence(wrapperTokenId, {
+        neighbor,
+        *this,
+        neighbor
+    });
+};
+
+ParserCombinator ParserCombinator::named(const std::string name) const
+{
+    return ParserCombinator([*this, name] (const std::string& str, const int start) -> ParserCombinatorResult {
+        ParserCombinatorResult result = (*this)(str, start);
         
-        if (getResultType(result) == ParserCombinatorResultType::TOKEN) return getTokenFromResult(result);
+        if (getResultType(result) == ParserCombinatorResultType::TOKEN) return result;
 
         ParserFailure defaultParserFailure = getParserFailureFromResult(result);
 
-        std::string bestName = defaultParserFailure.name.size() == 0 ? name : defaultParserFailure.name;
+        std::string bestName = defaultParserFailure.name.empty() ? name : defaultParserFailure.name;
 
         return ParserFailure(defaultParserFailure.start, bestName);
     });
@@ -256,10 +324,8 @@ ParserCombinator satisfy(const Predicate predicate)
 
 ParserCombinator satisfy(const std::string tokenId, const Predicate predicate)
 {
-    return ParserCombinator([tokenId, predicate] (const std::string& str, int start, int width) -> ParserCombinatorResult {
-        (void) width;
-
-        char c = str[start];
+    return ParserCombinator([tokenId, predicate] (const std::string& str, const int start) -> ParserCombinatorResult {
+        const char& c = str[start];
 
         if (predicate(c)) return Token(tokenId, std::string(1, c), start, 1);
 
@@ -294,34 +360,32 @@ ParserCombinator repetition(const std::string tokenId, const ParserCombinator ne
 
 ParserCombinator repetition(const std::string tokenId, const ParserCombinator nestedTokenGenerator, const int minCount, const int maxCount)
 {
-    return ParserCombinator([tokenId, nestedTokenGenerator, minCount, maxCount] (const std::string& str, int start, int width) -> ParserCombinatorResult {
+    return ParserCombinator([tokenId, nestedTokenGenerator, minCount, maxCount] (const std::string& str, const int start) -> ParserCombinatorResult {
         std::vector<Token> nestedTokens;
+
+        int tokensFound = 0;
     
         int scanStart = start;
 
-        while (scanStart != start + width) {
-            bool foundToken = false;
+        while (scanStart != (int) str.size()) {
+            if (tokensFound == maxCount) break;
 
-            int scanWidth = start + width - scanStart;
-
-            if ((int) nestedTokens.size() == maxCount) break;
-
-            ParserCombinatorResult result = nestedTokenGenerator(str, scanStart, scanWidth);
+            ParserCombinatorResult result = nestedTokenGenerator(str, scanStart);
 
             if (getResultType(result) == ParserCombinatorResultType::PARSER_FAILURE) break;
 
             Token token = getTokenFromResult(result);
 
-            nestedTokens.push_back(token);
+            if (token.width == 0) break;
+
+            tokensFound++;
+
+            addChildToken(nestedTokens, token);
 
             scanStart += token.width;
-            
-            foundToken = true;
-
-            if (!foundToken) break;
         }
 
-        if ((int) nestedTokens.size() < minCount) return ParserFailure(scanStart);
+        if (tokensFound < minCount) return ParserFailure(scanStart);
 
         else return Token(tokenId, nestedTokens, start, scanStart - start);
     });
@@ -354,37 +418,34 @@ ParserCombinator strictlyRepetition(const std::string tokenId, const ParserCombi
 
 ParserCombinator strictlyRepetition(const std::string tokenId, const ParserCombinator nestedTokenGenerator, const int minCount, const int maxCount)
 {
-    return ParserCombinator([tokenId, nestedTokenGenerator, minCount, maxCount] (const std::string& str, int start, int width) -> ParserCombinatorResult {
+    return ParserCombinator([tokenId, nestedTokenGenerator, minCount, maxCount] (const std::string& str, const int start) -> ParserCombinatorResult {
         std::vector<Token> nestedTokens;
+
+        int tokensFound = 0;
     
         int scanStart = start;
 
-        while (scanStart != start + width) {
-            bool foundToken = false;
+        while (scanStart != (int) str.size()) {
+            if (tokensFound == maxCount) break;
 
-            int scanWidth = start + width - scanStart;
+            ParserCombinatorResult result = nestedTokenGenerator(str, scanStart);
 
-            if ((int) nestedTokens.size() == maxCount) break;
-
-            ParserCombinatorResult result = nestedTokenGenerator(str, scanStart, scanWidth);
-
-            if (getResultType(result) == ParserCombinatorResultType::PARSER_FAILURE) break;
+            if (getResultType(result) == ParserCombinatorResultType::PARSER_FAILURE) return result;
 
             Token token = getTokenFromResult(result);
 
-            nestedTokens.push_back(token);
+            if (token.width == 0) return ParserFailure(scanStart);
+
+            tokensFound++;
+
+            addChildToken(nestedTokens, token);
 
             scanStart += token.width;
-            
-            foundToken = true;
-
-            if (!foundToken) break;
         }
+        
+        if (scanStart != (int) str.size()) return nestedTokenGenerator(str, scanStart);
 
-        if ((int) nestedTokens.size() < minCount) return ParserFailure(scanStart);
-
-        // failed to parse last repetition, so generator must return parse failure for unconsumed remainder
-        else if (scanStart != start + width) return nestedTokenGenerator(str, scanStart, start + width - scanStart);
+        else if (tokensFound < minCount) return ParserFailure(scanStart);
 
         else return Token(tokenId, nestedTokens, start, scanStart - start);
     });
@@ -407,64 +468,101 @@ ParserCombinator sequence(const std::vector<ParserCombinator> tokenGeneratorSequ
 
 ParserCombinator sequence(const std::string tokenId, const std::vector<ParserCombinator> tokenGeneratorSequence)
 {
-    return ParserCombinator([tokenId, tokenGeneratorSequence] (const std::string& str, int start, int width) -> ParserCombinatorResult {
+    return ParserCombinator([tokenId, tokenGeneratorSequence] (const std::string& str, const int start) -> ParserCombinatorResult {
         std::vector<Token> sequenceTokens;
 
         int scanOffset = 0;
 
         for (ParserCombinator tokenGenerator : tokenGeneratorSequence) {
-            ParserCombinatorResult result = tokenGenerator(str, start + scanOffset, width - scanOffset);
+            ParserCombinatorResult result = tokenGenerator(str, start + scanOffset);
 
             if (getResultType(result) == ParserCombinatorResultType::PARSER_FAILURE) return result;
 
             Token token = getTokenFromResult(result);
 
-            sequenceTokens.push_back(token);
+            addChildToken(sequenceTokens, token);
 
             scanOffset += token.width;
-
-            if (scanOffset > width) return ParserFailure(start);
         }
 
         return Token(tokenId, sequenceTokens, start, scanOffset);
     });
 };
 
-ParserCombinator string(const std::string str)
-{
-    return string("", str);
+ParserCombinator strictlySequence(const std::vector<ParserCombinator> tokenGeneratorSequence) {
+    return ParserCombinator([tokenGeneratorSequence] (const std::string& str, const int start) -> ParserCombinatorResult {
+        ParserCombinatorResult result = sequence(tokenGeneratorSequence)(str, start);
+
+        if (getResultType(result) == ParserCombinatorResultType::PARSER_FAILURE) return result;
+
+        Token token = getTokenFromResult(result);
+
+        if (token.start + token.width == (int) str.size()) return token;
+
+        else return ParserFailure(token.start + token.width, "end of input");
+    });
 };
 
-ParserCombinator string(const std::string tokenId, const std::string str)
-{
-    std::vector<ParserCombinator> charParserCombinators;
+ParserCombinator strictlySequence(const std::string tokenId, const std::vector<ParserCombinator> tokenGeneratorSequence) {
+    return ParserCombinator([tokenId, tokenGeneratorSequence] (const std::string& str, const int start) -> ParserCombinatorResult {
+        ParserCombinatorResult result = sequence(tokenId, tokenGeneratorSequence)(str, start);
 
-    for (const char c : str) charParserCombinators.push_back(satisfy(is(c)));
+        if (getResultType(result) == ParserCombinatorResultType::PARSER_FAILURE) return result;
 
-    return sequence(tokenId, charParserCombinators);
+        Token token = getTokenFromResult(result);
+
+        if (token.start + token.width == (int) str.size()) return token;
+
+        else return ParserFailure(token.start + token.width, "end of input");
+    });
 };
 
-ParserCombinator whitespace()
+ParserCombinator string(const std::string stringLiteral)
 {
-    return satisfy(anyOf({ is(' '), is('\t') })).repeatedly();
+    return string("", stringLiteral);
+};
+
+ParserCombinator string(const std::string tokenId, const std::string stringLiteral)
+{
+    return ParserCombinator([tokenId, stringLiteral] (const std::string& str, const int start) -> ParserCombinatorResult {
+        if (stringLiteral != str.substr(start, stringLiteral.size())) return ParserFailure(start);
+        
+        else return Token(tokenId, stringLiteral, start, stringLiteral.size());
+    });
+};
+
+ParserCombinator negate(const ParserCombinator tokenGenerator)
+{
+    return negate("", tokenGenerator);
+};
+
+ParserCombinator negate(const std::string tokenId, const ParserCombinator tokenGenerator)
+{
+    return ParserCombinator([tokenId, tokenGenerator] (const std::string& str, const int start) -> ParserCombinatorResult {
+        ParserCombinatorResult result = tokenGenerator(str, start);
+
+        if (getResultType(result) == ParserCombinatorResultType::TOKEN) return ParserFailure(start);
+
+        else return Token(tokenId, std::vector<Token>(), start, 0);
+    });
 };
 
 ParserCombinator choice(const std::vector<ParserCombinator> tokenGeneratorChoices)
 {
-    return ParserCombinator([tokenGeneratorChoices] (const std::string& str, int start, int width) -> ParserCombinatorResult {
-        if (tokenGeneratorChoices.size() == 0) return ParserFailure(start);
+    return ParserCombinator([tokenGeneratorChoices] (const std::string& str, const int start) -> ParserCombinatorResult {
+        if (tokenGeneratorChoices.empty()) return ParserFailure(start);
 
         bool foundToken = false;
         std::vector<ParserFailure> parseFailures;
         Token bestToken;
-        
-        for (ParserCombinator tokenGenerator : tokenGeneratorChoices) {
-            ParserCombinatorResult result = tokenGenerator(str, start, width);
+
+        for (const ParserCombinator& tokenGenerator : tokenGeneratorChoices) {
+            ParserCombinatorResult result = tokenGenerator(str, start);
 
             if (getResultType(result) == ParserCombinatorResultType::TOKEN) {
                 Token token = getTokenFromResult(result);
 
-                if (!foundToken || token.width < bestToken.width) {
+                if (!foundToken || token.width > bestToken.width) {
                     foundToken = true;
 
                     bestToken = token;
@@ -473,7 +571,7 @@ ParserCombinator choice(const std::vector<ParserCombinator> tokenGeneratorChoice
             else if (!foundToken) {
                 ParserFailure parseFailure = getParserFailureFromResult(result);
 
-                if (parseFailures.size() == 0 || parseFailure.start > parseFailures[0].start) parseFailures = { parseFailure };
+                if (parseFailures.empty() || parseFailure.start > parseFailures[0].start) parseFailures = { parseFailure };
 
                 else if (parseFailure.start == parseFailures[0].start) parseFailures.push_back(parseFailure);
             }
@@ -485,48 +583,99 @@ ParserCombinator choice(const std::vector<ParserCombinator> tokenGeneratorChoice
     });
 };
 
-ParserCombinator proxyParserCombinator(const ParserCombinator* parserCombinatorPointer)
+ParserCombinator choiceConcurrent(const std::vector<ParserCombinator> tokenGeneratorChoices)
 {
-    return ParserCombinator([parserCombinatorPointer] (const std::string& str, int start, int width) -> ParserCombinatorResult {
-        ParserCombinator proxiedParserCombinator = *parserCombinatorPointer;
+    return ParserCombinator([tokenGeneratorChoices] (const std::string& str, const int start) -> ParserCombinatorResult {
+        if (tokenGeneratorChoices.empty()) return ParserFailure(start);
+        
+        std::vector<std::future<ParserCombinatorResult>> tokenGeneratorThreads;
 
-        return proxiedParserCombinator(str, start, width);
+        for (const ParserCombinator& tokenGenerator : tokenGeneratorChoices) tokenGeneratorThreads.push_back(std::async(std::launch::async, tokenGenerator, str, start));
+
+        std::vector<ParserCombinatorResult> tokenGeneratorResults;
+
+        bool foundToken = false;
+        std::vector<ParserFailure> parseFailures;
+        Token bestToken;
+
+        for (auto& thread : tokenGeneratorThreads) {
+            ParserCombinatorResult result = thread.get();
+
+            if (getResultType(result) == ParserCombinatorResultType::TOKEN) {
+                Token token = getTokenFromResult(result);
+
+                if (!foundToken || token.width > bestToken.width) {
+                    foundToken = true;
+
+                    bestToken = token;
+                }
+            }
+            else if (!foundToken) {
+                ParserFailure parseFailure = getParserFailureFromResult(result);
+
+                if (parseFailures.empty() || parseFailure.start > parseFailures[0].start) parseFailures = { parseFailure };
+
+                else if (parseFailure.start == parseFailures[0].start) parseFailures.push_back(parseFailure);
+            }
+        }
+
+        if (foundToken) return bestToken;
+
+        else return ParserFailure::composeFrom(parseFailures);
     });
 };
 
-void inlineAnonymousNests(Token& token)
+ParserCombinator allOf(const std::string tokenId, const std::vector<ParserCombinator> tokenGeneratorRequirements)
 {
-    if (token.type == Token::TokenType::STRING_LITERAL) return;
+    return ParserCombinator([tokenId, tokenGeneratorRequirements] (const std::string& str, const int start) -> ParserCombinatorResult {
+        std::vector<Token> tokens;
+        int largestTokenWidth = 0;
 
-    std::vector<Token> children = std::get<std::vector<Token>>(token.content);
+        for (const ParserCombinator& tokenGeneratorRequirement : tokenGeneratorRequirements) {
+            ParserCombinatorResult result = tokenGeneratorRequirement(str, start);
 
-    for (Token& child : children) inlineAnonymousNests(child);
+            if (getResultType(result) == ParserCombinatorResultType::PARSER_FAILURE) return result;
+            
+            Token token = getTokenFromResult(result);
 
-    // TODO: could be done in place
-    std::vector<Token> inlinedChildren;
+            addChildToken(tokens, token);
 
-    for (Token child : children) {
-        if (child.type == Token::TokenType::NESTING && child.id.size() == 0) {
-            std::vector<Token> childrenOfChild = std::get<std::vector<Token>>(child.content);
-
-            inlinedChildren.insert(inlinedChildren.end(), childrenOfChild.begin(), childrenOfChild.end());
-        } else if(child.id.size() != 0) {
-            inlinedChildren.push_back(child);
+            if (token.width > largestTokenWidth) largestTokenWidth = token.width;
         }
-    }
 
-    token.content = inlinedChildren;
+        return Token(tokenId, tokens, start, largestTokenWidth);
+    });
+};
+
+ParserCombinator noneOf(const std::vector<ParserCombinator> tokenGeneratorRequirements)
+{
+    return ParserCombinator([tokenGeneratorRequirements] (const std::string& str, const int start) -> ParserCombinatorResult {
+        for (const ParserCombinator& tokenGeneratorRequirement : tokenGeneratorRequirements) {
+            ParserCombinatorResult result = tokenGeneratorRequirement(str, start);
+
+            if (getResultType(result) == ParserCombinatorResultType::TOKEN) return ParserFailure(start);
+        }
+
+        return Token("", std::vector<Token>(), start, 0);
+    });
+};
+
+ParserCombinator proxyParserCombinator(const ParserCombinator* parserCombinatorPointer)
+{
+    return ParserCombinator([parserCombinatorPointer] (const std::string& str, const int start) -> ParserCombinatorResult {
+        ParserCombinator proxiedParserCombinator = *parserCombinatorPointer;
+
+        return proxiedParserCombinator(str, start);
+    });
 };
 
 ParserCombinatorResult parse(const std::string& str, const ParserCombinator parserCombinator)
 {
-    ParserCombinatorResult result = parserCombinator(str, 0, (int) str.size());
+    ParserCombinatorResult result = parserCombinator(str, 0);
 
     if (getResultType(result) == ParserCombinatorResultType::PARSER_FAILURE) return result;
 
     Token token = getTokenFromResult(result);
-
-    inlineAnonymousNests(token);
 
     return token;
 };

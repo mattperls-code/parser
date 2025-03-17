@@ -19,17 +19,24 @@ std::string readFile(std::string path)
 
 void simpleLanguageTest()
 {
+    Predicate isAlphabetical = [] (const char& c) {
+        return std::isalpha(c);
+    };
+
+    Predicate isNumeric = [] (const char& c) {
+        return std::isdigit(c);
+    };
+
+    ParserCombinator whitespace = satisfy(anyOf({ is(' '), is('\t') })).repeatedly();
+
     ParserCombinator variable = sequence("VARIABLE", {
         satisfy("CHAR", anyOf({ isAlphabetical, is('_') })),
-        repetition(satisfy("CHAR", anyOf({ isAlphabetical, isNumeric, is('_') })))
+        satisfy("CHAR", anyOf({ isAlphabetical, isNumeric, is('_') })).repeatedly()
     }).named("variable");
 
     ParserCombinator number = sequence("NUMBER", {
         repetition("INT", satisfy("CHAR", isNumeric), 1),
-        optional("DEC", sequence({
-            satisfy(is('.')),
-            repetition(satisfy("CHAR", isNumeric), 1)
-        }))
+        optional("DEC", satisfy("CHAR", isNumeric).repeatedly(1).precededBy(satisfy(is('.'))))
     }).named("number");
 
     ParserCombinator expression;
@@ -49,45 +56,29 @@ void simpleLanguageTest()
         })
     }).named("expression term");
 
-    expression = sequence("EXPRESSION", {
-        whitespace(),
-        expressionTerm,
-        repetition(sequence({
-            whitespace(),
-            satisfy("BINARY_OPERATOR", anyOf({ is('+'), is('-'), is('*'), is('/') })).named("binary operator"),
-            whitespace(),
-            expressionTerm
-        }))
-    }).named("expression");
+    ParserCombinator binaryOperator = satisfy("BINARY_OPERATOR", anyOf({ is('+'), is('-'), is('*'), is('/') })).named("binary operator");
 
-    ParserCombinator ending = satisfy(anyOf({ is(';'), is('\n') })).named("ending delimiter");
+    expression = expressionTerm.sorroundedBy(whitespace).repeatedlyWithDelimeter(binaryOperator).named("expression");
 
-    ParserCombinator blocks = strictlyRepetition("BLOCKS", choice({
-        sequence({
-            whitespace(),
-            ending
-        }),
-        sequence("EVALUATE", {
-            whitespace(),
-            string("eval ").named("\"eval \""),
-            whitespace(),
-            expression,
-            whitespace(),
-            ending
-        }),
-        sequence("ASSIGNMENT", {
-            whitespace(),
-            string("let ").named("\"let \""),
-            whitespace(),
-            variable,
-            whitespace(),
-            satisfy("EQUALS", is('=')).named("\"=\""),
-            whitespace(),
-            expression,
-            whitespace(),
-            ending
-        })
-    }));
+    ParserCombinator evaluateBlock = string("eval ").named("\"eval \"").followedBy("EVALUATE", expression);
+
+    ParserCombinator assignmentBlock = sequence("ASSIGNMENT", {
+        string("let ").named("\"let \""),
+        variable.sorroundedBy(whitespace),
+        satisfy(is('=')).named("="),
+        expression
+    });
+
+    ParserCombinator ending = satisfy(anyOf({ is(';'), is('\n') })).named("ending");
+
+    ParserCombinator blocks = strictlySequence("BLOCKS", {
+        choice({
+            whitespace,
+            evaluateBlock,
+            assignmentBlock
+        }).sorroundedBy(whitespace).repeatedlyWithDelimeter(ending),
+        ending.optionally()
+    }).named("blocks");
 
     std::string testString = readFile("./tests/test.eval");
 
@@ -106,54 +97,64 @@ void simpleLanguageTest()
 
 void xmlTest()
 {
+    Predicate isAlphabetical = [] (const char& c) {
+        return std::isalpha(c);
+    };
+
+    Predicate isNumeric = [] (const char& c) {
+        return std::isdigit(c);
+    };
+
+    ParserCombinator whitespace = satisfy(anyOf({ is(' '), is('\t') })).repeatedly();
+
     ParserCombinator tagName = sequence("TAG_NAME", {
         satisfy("CHAR", isAlphabetical),
         repetition(satisfy("CHAR", anyOf({ isAlphabetical, isNumeric })))
     }).named("tag name");
 
     ParserCombinator tagAttributes = repetition("ATTRIBUTES", sequence({
-        whitespace(),
+        whitespace,
         sequence("KEY", {
             satisfy("CHAR", isAlphabetical),
             repetition(satisfy("CHAR", anyOf({ isAlphabetical, isNumeric })))
         }).named("key"),
-        whitespace(),
+        whitespace,
         satisfy(is('=')).named("\"=\""),
-        whitespace(),
+        whitespace,
         satisfy(is('\"')).named("\""),
         repetition("VALUE", satisfy("CHAR", negate(is('\"')))).named("value"),
         satisfy(is('\"')).named("\""),
     }).named("attribute"));
 
     ParserCombinator tagContent = sequence({
-        whitespace(),
+        whitespace,
         tagName,
         tagAttributes,
-        whitespace()
+        whitespace
     }).named("tag content");
 
     ParserCombinator openingTag = sequence("OPENING_TAG", {
-        whitespace(),
+        whitespace,
         satisfy(is('<')).named("<"),
         tagContent,
         satisfy(is('>')).named(">")
     }).named("opening tag");
 
     ParserCombinator closingTag = sequence("CLOSING_TAG", {
-        whitespace(),
+        whitespace,
         string("</").named("</"),
-        whitespace(),
+        whitespace,
         tagName,
-        whitespace(),
+        whitespace,
         satisfy(is('>')).named(">")
     }).named("closing tag");
 
     ParserCombinator selfClosingTag = sequence("SELF_CLOSING_TAG", {
-        whitespace(),
+        whitespace,
         satisfy(is('<')).named("<"),
-        whitespace(),
+        whitespace,
         tagContent,
-        whitespace(),
+        whitespace,
         string("/>").named("/>")
     }).named("self closing tag");
 
