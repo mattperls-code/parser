@@ -58,13 +58,13 @@ void simpleLanguageTest()
 
     ParserCombinator binaryOperator = satisfy("BINARY_OPERATOR", anyOf({ is('+'), is('-'), is('*'), is('/') })).named("binary operator");
 
-    expression = expressionTerm.sorroundedBy(whitespace).repeatedlyWithDelimeter(binaryOperator).named("expression");
+    expression = expressionTerm.surroundedBy(whitespace).repeatedlyWithDelimeter(binaryOperator).named("expression");
 
     ParserCombinator evaluateBlock = string("eval ").named("\"eval \"").followedBy("EVALUATE", expression);
 
     ParserCombinator assignmentBlock = sequence("ASSIGNMENT", {
         string("let ").named("\"let \""),
-        variable.sorroundedBy(whitespace),
+        variable.surroundedBy(whitespace),
         satisfy(is('=')).named("="),
         expression
     });
@@ -76,7 +76,7 @@ void simpleLanguageTest()
             whitespace,
             evaluateBlock,
             assignmentBlock
-        }).sorroundedBy(whitespace).repeatedlyWithDelimeter(ending),
+        }).surroundedBy(whitespace).repeatedlyWithDelimeter(ending),
         ending.optionally()
     }).named("blocks");
 

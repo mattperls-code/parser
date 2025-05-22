@@ -105,8 +105,8 @@ class ParserCombinator
         ParserCombinator followedBy(const ParserCombinator successor) const;
         ParserCombinator followedBy(const std::string wrapperTokenId, const ParserCombinator successor) const;
 
-        ParserCombinator sorroundedBy(const ParserCombinator neighbor) const;
-        ParserCombinator sorroundedBy(const std::string wrapperTokenId, const ParserCombinator neighbor) const;
+        ParserCombinator surroundedBy(const ParserCombinator neighbor) const;
+        ParserCombinator surroundedBy(const std::string wrapperTokenId, const ParserCombinator neighbor) const;
 
         ParserCombinator named(const std::string name) const;
 };

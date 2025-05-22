@@ -288,12 +288,12 @@ ParserCombinator ParserCombinator::followedBy(const std::string wrapperTokenId, 
     });
 };
 
-ParserCombinator ParserCombinator::sorroundedBy(const ParserCombinator neighbor) const
+ParserCombinator ParserCombinator::surroundedBy(const ParserCombinator neighbor) const
 {
-    return sorroundedBy("", neighbor);
+    return surroundedBy("", neighbor);
 };
 
-ParserCombinator ParserCombinator::sorroundedBy(const std::string wrapperTokenId, const ParserCombinator neighbor) const
+ParserCombinator ParserCombinator::surroundedBy(const std::string wrapperTokenId, const ParserCombinator neighbor) const
 {
     return sequence(wrapperTokenId, {
         neighbor,
@@ -671,11 +671,5 @@ ParserCombinator proxyParserCombinator(const ParserCombinator* parserCombinatorP
 
 ParserCombinatorResult parse(const std::string& str, const ParserCombinator parserCombinator)
 {
-    ParserCombinatorResult result = parserCombinator(str, 0);
-
-    if (getResultType(result) == ParserCombinatorResultType::PARSER_FAILURE) return result;
-
-    Token token = getTokenFromResult(result);
-
-    return token;
+    return parserCombinator(str, 0);
 };
